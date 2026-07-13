@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+
+  postgres: #psql -h localhost -U tmu_admin -d tmu_mdm
+    image: postgres:16-alpine
+    container_name: tmu_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tmu_mdm
+      POSTGRES_USER: tmu_admin
+      POSTGRES_PASSWORD: tmu_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - tmu_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tmu_admin -d tmu_mdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tmu_network
+
+  seeder:
+    build:
+      context: ./seeder
+      dockerfile: Dockerfile
+    container_name: tmu_mdm_seeder
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: tmu_mdm
+      POSTGRES_USER: tmu_admin
+      POSTGRES_PASSWORD: tmu_password
+      SQL_DIR: /sql
+      MAX_RETRIES: 30
+      RETRY_DELAY_SECONDS: 2
+    volumes:
+      - ./sql:/sql:ro
+    networks:
+      - tmu_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tmu_pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@tmu.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8081:80"
+    networks:
+      - tmu_network
+
+volumes:
+  tmu_pg_data:
+
+networks:
+  tmu_network:
+    driver: bridge
