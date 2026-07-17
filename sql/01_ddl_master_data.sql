@@ -7,7 +7,7 @@
 CREATE SCHEMA IF NOT EXISTS mdm;
 
 -- 1. REF_POLE — 4 strategic poles
-CREATE TABLE mdm.ref_pole (
+CREATE TABLE IF NOT EXISTS mdm.ref_pole (
     pole_code       CHAR(1) PRIMARY KEY CHECK (pole_code IN ('1','2','3','4')),
     pole_libelle    VARCHAR(50) NOT NULL,
     responsable     VARCHAR(100),
@@ -17,7 +17,7 @@ CREATE TABLE mdm.ref_pole (
 );
 
 -- 2. REF_LIGNE — 13 activity lines, each attached to one pole
-CREATE TABLE mdm.ref_ligne (
+CREATE TABLE IF NOT EXISTS mdm.ref_ligne (
     ligne_code      CHAR(2) PRIMARY KEY,           -- '01' .. '13', '00' = transverse
     ligne_libelle   VARCHAR(100) NOT NULL,
     pole_code       CHAR(1) NOT NULL REFERENCES mdm.ref_pole(pole_code),
@@ -26,7 +26,7 @@ CREATE TABLE mdm.ref_ligne (
 );
 
 -- 3. REF_SITE — geographic locations
-CREATE TABLE mdm.ref_site (
+CREATE TABLE IF NOT EXISTS mdm.ref_site (
     site_code       CHAR(3) PRIMARY KEY,           -- POR / TAC / SAT / SIE
     site_libelle    VARCHAR(100) NOT NULL,
     adresse         VARCHAR(255),
@@ -35,7 +35,7 @@ CREATE TABLE mdm.ref_site (
 );
 
 -- 4. REF_CLIENT — B2B clients (golden record, sourced CRM/SAP)
-CREATE TABLE mdm.ref_client (
+CREATE TABLE IF NOT EXISTS mdm.ref_client (
     client_code     VARCHAR(20) PRIMARY KEY,
     raison_sociale  VARCHAR(150) NOT NULL,
     siret           VARCHAR(20),
@@ -47,7 +47,7 @@ CREATE TABLE mdm.ref_client (
 );
 
 -- 5. REF_NATURE — cost/revenue nature typology (axis A6)
-CREATE TABLE mdm.ref_nature (
+CREATE TABLE IF NOT EXISTS mdm.ref_nature (
     nature_code     VARCHAR(10) PRIMARY KEY,
     nature_libelle  VARCHAR(100) NOT NULL,
     type_nature     VARCHAR(20) CHECK (type_nature IN ('PRODUIT','CHARGE')),
@@ -55,7 +55,7 @@ CREATE TABLE mdm.ref_nature (
 );
 
 -- 6. REF_CONTRAT — individual service contracts (axis A4)
-CREATE TABLE mdm.ref_contrat (
+CREATE TABLE IF NOT EXISTS mdm.ref_contrat (
     contrat_code    VARCHAR(6) PRIMARY KEY,         -- 6 chars, e.g. 'CTR042'
     client_code     VARCHAR(20) NOT NULL REFERENCES mdm.ref_client(client_code),
     ligne_code      CHAR(2) NOT NULL REFERENCES mdm.ref_ligne(ligne_code),
@@ -69,16 +69,16 @@ CREATE TABLE mdm.ref_contrat (
 );
 
 -- 7. REF_PLAN_COMPTABLE — mapping general ledger accounts <-> analytical codes
-CREATE TABLE mdm.ref_plan_comptable (
+CREATE TABLE IF NOT EXISTS mdm.ref_plan_comptable (
     compte_general  VARCHAR(20) PRIMARY KEY,        -- Oracle GL account
     libelle_compte  VARCHAR(150),
     nature_code     VARCHAR(10) REFERENCES mdm.ref_nature(nature_code),
     created_at      TIMESTAMP DEFAULT now()
 );
 
--- =====================================================================
+
 -- ANALYTICAL CODE GENERATOR: P.LL.S.CCCCCC (12 useful chars)
--- =====================================================================
+
 CREATE OR REPLACE FUNCTION mdm.build_analytical_code(
     p_pole   CHAR(1),
     p_ligne  CHAR(2),

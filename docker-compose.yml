@@ -52,7 +52,7 @@ services:
     depends_on:
       - postgres
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@tmu.local
+      PGADMIN_DEFAULT_EMAIL: admin@tmu.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "8081:80"
