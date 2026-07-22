@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "SapVente",
+  "namespace": "tmu.sap",
+  "fields": [
+    {"name": "transaction_id", "type": "string"},
+    {"name": "source_system", "type": "string", "default": "SAP"},
+    {"name": "client_code", "type": "string"},
+    {"name": "contrat_code", "type": ["null", "string"], "default": null},
+    {"name": "montant", "type": "double"},
+    {"name": "devise", "type": "string", "default": "MAD"},
+    {"name": "date_vente", "type": "string"},
+    {"name": "emitted_at", "type": "string"}
+  ]
+}

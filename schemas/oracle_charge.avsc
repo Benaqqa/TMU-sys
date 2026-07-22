@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "OracleCharge",
+  "namespace": "tmu.oracle",
+  "fields": [
+    {"name": "transaction_id", "type": "string"},
+    {"name": "source_system", "type": "string", "default": "ORACLE"},
+    {"name": "fournisseur", "type": "string"},
+    {"name": "compte_general", "type": "string"},
+    {"name": "montant", "type": "double"},
+    {"name": "devise", "type": "string", "default": "MAD"},
+    {"name": "date_charge", "type": "string"},
+    {"name": "emitted_at", "type": "string"}
+  ]
+}

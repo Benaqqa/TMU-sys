@@ -1,21 +1,19 @@
-version: "3.9"
-
 services:
 
-  postgres: #psql -h localhost -U tmu_admin -d tmu_mdm
+  postgres:
     image: postgres:16-alpine
     container_name: tmu_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: tmu_mdm
-      POSTGRES_USER: tmu_admin
-      POSTGRES_PASSWORD: tmu_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - tmu_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tmu_admin -d tmu_mdm"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,9 +32,9 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: tmu_mdm
-      POSTGRES_USER: tmu_admin
-      POSTGRES_PASSWORD: tmu_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SQL_DIR: /sql
       MAX_RETRIES: 30
       RETRY_DELAY_SECONDS: 2
@@ -52,15 +50,145 @@ services:
     depends_on:
       - postgres
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@tmu.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
-      - "8081:80"
+      - "8083:80"
     networks:
       - tmu_network
 
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: tmu_kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: tmu-kafka-cluster-01
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - tmu_kafka_data:/var/lib/kafka/data
+    networks:
+      - tmu_network
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    container_name: tmu_schema_registry
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/subjects || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - tmu_network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: tmu_kafka_ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+      - schema-registry
+    ports:
+      - "8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: tmu-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+    networks:
+      - tmu_network
+
+  producer-sap:
+    build:
+      context: ./producers
+      dockerfile: Dockerfile
+    container_name: tmu_producer_sap
+    restart: unless-stopped
+    command: ["python", "producer_sap.py"]
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SCHEMA_PATH: /schemas/sap_vente.avsc
+      PRODUCE_INTERVAL_SECONDS: 3
+    volumes:
+      - ./schemas:/schemas:ro
+    networks:
+      - tmu_network
+    stop_grace_period: 15s
+
+  producer-oracle:
+    build:
+      context: ./producers
+      dockerfile: Dockerfile
+    container_name: tmu_producer_oracle
+    restart: unless-stopped
+    command: ["python", "producer_oracle.py"]
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SCHEMA_PATH: /schemas/oracle_charge.avsc
+      PRODUCE_INTERVAL_SECONDS: 4
+    volumes:
+      - ./schemas:/schemas:ro
+    networks:
+      - tmu_network
+    stop_grace_period: 15s
+
+  bronze-loader:
+    build:
+      context: ./bronze_loader
+      dockerfile: Dockerfile
+    container_name: tmu_bronze_loader
+    restart: unless-stopped
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      BRONZE_ROOT: /data/bronze
+      FLUSH_INTERVAL_MESSAGES: 5
+      FLUSH_INTERVAL_SECONDS: 15
+    volumes:
+      - ./bronze_data:/data/bronze
+      - ./bronze_dlq:/data/dlq
+    networks:
+      - tmu_network
+    stop_grace_period: 20s
+
 volumes:
   tmu_pg_data:
+  tmu_kafka_data:
 
 networks:
   tmu_network:
